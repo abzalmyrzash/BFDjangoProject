@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from utils.constants import GENDERS
+# Create your models here.
 
 
 class CustomUserManager(BaseUserManager):
@@ -34,5 +36,18 @@ class CustomUserManager(BaseUserManager):
 
 
 class CustomUser(AbstractUser):
-    reputation = models.IntegerField(default=0)
     objects = CustomUserManager()
+    is_private = models.BooleanField(default=False, verbose_name="Приватность")
+    first_name = None
+    last_name = None
+
+
+class Profile(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, verbose_name="Пользователь",
+                                related_name="profile")
+    first_name = models.CharField(max_length=50, verbose_name="Имя")
+    middle_name = models.CharField(max_length=50, verbose_name="Отчество")
+    last_name = models.CharField(max_length=50, verbose_name="Фамилия")
+    gender = models.SmallIntegerField(choices=GENDERS, null=True, verbose_name="Пол")
+    location = models.CharField(max_length=255, verbose_name="Местоположение")
+    phone = models.CharField(max_length=50, verbose_name="Телефонный номер")
