@@ -4,8 +4,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework import status
-from api.serializers import PostSerializer, CommentSerializer, UserSerializer
-from api.models import Group,Post, Comment, CustomUser
+from main.serializers import PostSerializer, CommentSerializer
+from main.models import Group,Post, Comment, CustomUser
 
 
 @api_view(['GET','DELETE','PUT'])

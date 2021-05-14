@@ -35,3 +35,5 @@ GENDERS = (
     (GENDER_MALE, 'male'),
     (GENDER_FEMALE, 'female'),
 )
+
+MINIMUM_AGE = 13

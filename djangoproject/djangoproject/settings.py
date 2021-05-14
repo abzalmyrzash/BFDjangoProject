@@ -28,6 +28,11 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+INTERNAL_IPS = [
+    # ...
+    '127.0.0.1',
+    # ...
+]
 
 # Application definition
 
@@ -40,6 +45,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_jwt',
+    'django_filters',
+    'debug_toolbar',
+    'django_extensions',
     'main',
     'auth_',
 ]
@@ -52,6 +60,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
 
 ROOT_URLCONF = 'djangoproject.urls'
@@ -89,7 +98,7 @@ DATABASES = {
     }
 }
 
-
+AUTH_USER_MODEL = 'auth_.CustomUser'
 # Password validation
 # https://docs.djangoproject.com/en/3.1/ref/settings/#auth-password-validators
 
@@ -133,7 +142,7 @@ STATICFILES_DIRS = (os.path.join(BASE_DIR, 'static'),)
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.AllowAny',
     ),
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
@@ -141,3 +150,43 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.BasicAuthentication',
     ),
 }
+
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '%(levelname)s -- %(asctime)s: %(message)s',
+        },
+        'simple': {
+            'format': '%(levelname)s -- %(message)s'
+        }
+    },
+    'handlers': {
+        'file_handler': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': 'test_main.log',
+            'formatter': 'verbose'
+        },
+        'console_handler': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple'
+        }
+    },
+    'loggers': {
+        'main': {
+            'handlers': ['file_handler', 'console_handler'],
+            'level': 'DEBUG',
+        },
+        'auth_': {
+            'handlers': ['console_handler'],
+            'level': 'DEBUG',
+        },
+    },
+}
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

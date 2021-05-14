@@ -1,15 +1,13 @@
 from rest_framework.views import APIView
 
-from api.models import  Group,Comment,Post, CustomUser
-from api.serializers import UserSerializer,  GroupSerializer,CommentSerializer
+from main.models import Group,Comment,Post, CustomUser
+from main.serializers import  GroupSerializer, PostSerializer, CommentSerializer
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import filters
 
 from django_filters.rest_framework import DjangoFilterBackend
-
-
 
 
 class Groups(generics.ListCreateAPIView):
@@ -54,11 +52,3 @@ class CreatedGroups(generics.ListAPIView):
 
     def get_serializer_class(self):
         return GroupSerializer
-
-
-class UserDetail(generics.RetrieveAPIView):
-    def get_queryset(self):
-        return CustomUser.objects.all()
-
-    def get_serializer_class(self):
-        return UserSerializer

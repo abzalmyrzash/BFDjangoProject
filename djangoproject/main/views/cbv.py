@@ -2,11 +2,11 @@ from rest_framework.views import APIView
 from django.http import JsonResponse, HttpResponse
 from rest_framework.response import Response
 from rest_framework import status
-from api.serializers import PostSerializer, CommentSerializer
+from main.serializers import PostSerializer, CommentSerializer
 from rest_framework.views import APIView
 from rest_framework import mixins
 from rest_framework import generics
-from api.models import Group, Post, Comment
+from main.models import Group, Post, Comment
 
 
 class GroupPostView(APIView):
