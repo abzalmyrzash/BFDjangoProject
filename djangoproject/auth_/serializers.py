@@ -19,12 +19,12 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
 class UserFullSerializer(UserSerializer):
     password = serializers.CharField(max_length=200, write_only=True)
+    email = serializers.EmailField()
 
     def create(self, validated_data):
         print(validated_data)
         user = User.objects.create(
             username=validated_data['username'],
-            is_superuser=validated_data['is_superuser'],
             email=validated_data['email']
         )
         user.set_password(validated_data['password'])
@@ -33,8 +33,8 @@ class UserFullSerializer(UserSerializer):
         return user
 
     class Meta(UserSerializer.Meta):
-        fields = UserSerializer.Meta.fields + ('email', 'password', 'date_joined', 'is_superuser',
-                                               'is_staff', 'is_private')
+        fields = UserSerializer.Meta.fields + ('email', 'password',  'friends', 'is_private', 'is_active',
+                                               'date_joined', 'last_login', 'is_superuser', 'is_staff')
         # fields = '__all__'
 
 

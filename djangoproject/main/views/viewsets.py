@@ -7,12 +7,12 @@ from main.models import Group, Post, Comment, Reaction, FriendRequest, GroupJoin
 from main.serializers import GroupSerializer, PostSerializer, CommentSerializer, ReactionSerializer,\
     FriendRequestSerializer, GroupJoinRequestSerializer, GroupInviteSerializer,\
     GroupFullSerializer, PostFullSerializer, PostWithoutContentSerializer, \
-    CommentFullSerializer, ReactionFullSerializer
+    CommentFullSerializer, CommentWithoutContentSerializer, ReactionFullSerializer
 from auth_.serializers import UserSerializer
 from auth_.models import CustomUser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from main.permissions import GroupMemberPermission, GroupAdminPermission, GroupOwnerPermission,\
-    PostCreatorPermission, GetPostPermission
+    PostCommentCreatorPermission, GetPostPermission, GetCommentPermission
 
 logger = logging.getLogger(__name__)
 
@@ -155,12 +155,14 @@ class PostViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'list':
             return PostWithoutContentSerializer
+        elif self.action in ['update', 'partial_update']:
+            return CommentSerializer
         else:
             return PostFullSerializer
 
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:
-            permission_classes = (PostCreatorPermission,)
+            permission_classes = (PostCommentCreatorPermission,)
         elif self.action in ['create']:
             permission_classes = (IsAuthenticated,)
         elif self.action in ['retrieve']:
@@ -198,14 +200,25 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(methods=['GET'], detail=True, url_path='get_by_creator', url_name='get_by_creator')
     def get_by_creator(self, request, pk):
-        queryset = Post.objects.get_by_creator(creator=pk)
-        serializer = PostWithoutContentSerializer(queryset, many=True)
+        pk = int(pk)
+        if not CustomUser.objects.filter(id=pk).exists():
+            return Response("User not found.", status=status.HTTP_404_NOT_FOUND)
+        queryset = Post.objects.get_by_creator(creator_id=pk, request_user_id=request.user.id)
+        serializer = PostFullSerializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(methods=['GET'], detail=True, url_path='get_by_group', url_name='get_by_group')
     def get_by_group(self, request, pk):
-        queryset = Post.objects.get_by_group(group=pk)
-        serializer = PostWithoutContentSerializer(queryset, many=True)
+        pk = int(pk)
+        if not Group.objects.filter(id=pk).exists():
+            return Response("Group not found.", status=status.HTTP_404_NOT_FOUND)
+
+        group = Group.objects.get(id=pk)
+        if not group.members.filter(id=request.user.id).exists():
+            return Response("You do not have permission.", status=status.HTTP_401_UNAUTHORIZED)
+
+        queryset = Post.objects.get_by_group(group_id=pk)
+        serializer = PostFullSerializer(queryset, many=True)
         return Response(serializer.data)
 
 
@@ -215,13 +228,38 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'list':
+            return CommentWithoutContentSerializer
+        elif self.action in ['update', 'partial_update']:
             return CommentSerializer
         else:
             return CommentFullSerializer
 
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            permission_classes = (PostCommentCreatorPermission,)
+        elif self.action in ['create', 'get_my_comments']:
+            permission_classes = (IsAuthenticated,)
+        elif self.action in ['retrieve']:
+            permission_classes = (GetCommentPermission,)
+        else:
+            permission_classes = (AllowAny,)
+
+        return [permission() for permission in permission_classes]
+
     def perform_create(self, serializer):
-        serializer.save()
-        logger.info(f'Comment created: {serializer.instance}')
+        created_by = self.request.user
+
+        post_id = serializer.validated_data.pop('post_id')
+        directed_to_id = serializer.validated_data.pop('directed_to_id')
+
+        post = Post.objects.get(id=post_id)
+        try:
+            directed_to = Comment.objects.get(id=directed_to_id)
+        except:
+            directed_to = None
+
+        serializer.save(created_by=created_by, post=post, directed_to=directed_to)
+        logger.info(f'Post created: {serializer.instance}')
 
     def perform_update(self, serializer):
         serializer.save()
@@ -231,6 +269,39 @@ class CommentViewSet(viewsets.ModelViewSet):
         instance.delete()
         logger.warning(f'Comment deleted: {instance}')
 
+    @action(methods=['GET'], detail=True, url_path='get_by_post', url_name='get_by_post')
+    def get_by_post(self, request, pk):
+        pk = int(pk)
+        if not Post.objects.filter(id=pk).exists():
+            return Response("Post not found.", status=status.HTTP_404_NOT_FOUND)
+
+        post = Post.objects.get(id=pk)
+        if not GetPostPermission.user_obj_permission(request.user, post):
+            return Response("You do not have permission.", status=status.HTTP_401_UNAUTHORIZED)
+
+        queryset = Comment.objects.get_by_post(post_id=pk)
+        serializer = CommentFullSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(methods=['GET'], detail=True, url_path='get_by_parent', url_name='get_by_parent')
+    def get_by_parent(self, request, pk):
+        pk = int(pk)
+        if not Comment.objects.filter(id=pk).exists():
+            return Response("Comment not found.", status=status.HTTP_404_NOT_FOUND)
+
+        comment = Comment.objects.get(id=pk)
+        if not GetPostPermission.user_obj_permission(request.user, comment.post):
+            return Response("You do not have permission.", status=status.HTTP_401_UNAUTHORIZED)
+
+        queryset = Comment.objects.get_by_parent_comment(comment_id=pk)
+        serializer = CommentFullSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(methods=['GET'], detail=False, url_path='my_comments', url_name='my_comments')
+    def get_my_comments(self, request):
+        queryset = Comment.objects.get_by_creator(creator_id=request.user.id)
+        serializer = CommentFullSerializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class ReactionViewSet(viewsets.ModelViewSet):
@@ -256,7 +327,10 @@ class ReactionViewSet(viewsets.ModelViewSet):
 
 
 
-class FriendRequestViewSet(viewsets.ModelViewSet):
+class FriendRequestViewSet(viewsets.ViewSet,
+                           mixins.CreateModelMixin,
+                           mixins.RetrieveModelMixin,
+                           mixins.DestroyModelMixin):
     queryset = FriendRequest.objects.all()
 
     def get_serializer_class(self):
@@ -276,7 +350,10 @@ class FriendRequestViewSet(viewsets.ModelViewSet):
 
 
 
-class GroupJoinRequestViewSet(viewsets.ModelViewSet):
+class GroupJoinRequestViewSet(viewsets.ViewSet,
+                              mixins.CreateModelMixin,
+                              mixins.RetrieveModelMixin,
+                              mixins.DestroyModelMixin):
     queryset = GroupJoinRequest.objects.all()
 
     def get_serializer_class(self):
@@ -296,7 +373,31 @@ class GroupJoinRequestViewSet(viewsets.ModelViewSet):
 
 
 
-class GroupInviteViewSet(viewsets.ModelViewSet):
+class GroupInviteViewSet(viewsets.ViewSet,
+                         mixins.CreateModelMixin,
+                         mixins.RetrieveModelMixin,
+                         mixins.DestroyModelMixin):
+    queryset = GroupInvite.objects.all()
+
+    def get_serializer_class(self):
+        return GroupInviteSerializer
+
+    def perform_create(self, serializer):
+        serializer.save()
+        logger.info(f'Group invite created: {serializer.instance}')
+
+    def perform_update(self, serializer):
+        serializer.save()
+        logger.info(f'Group invite updated: {serializer.instance}')
+
+    def perform_destroy(self, instance):
+        instance.delete()
+        logger.warning(f'Group invite deleted: {instance}')
+
+
+class NotificationViewSet(viewsets.ViewSet,
+                          mixins.CreateModelMixin,
+                          mixins.RetrieveModelMixin):
     queryset = GroupInvite.objects.all()
 
     def get_serializer_class(self):

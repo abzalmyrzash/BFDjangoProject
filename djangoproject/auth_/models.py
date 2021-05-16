@@ -90,8 +90,10 @@ class Profile(models.Model):
                        profile.get_full_name('lfm') returns "Myrzash Abzal Daurenbekuly"
                        profile.get_full_name('lf') returns "Myrzash Abzal"
                        profile.get_full_name('lFM') returns "Myrzash A. D."
-        :return: string, full name using format
+        :return: string, full name formatted in :param format, but if it's blank return @username
         """
+        if len(format) == 0:
+            raise ValueError("Format must have at least 1 character!")
 
         full_name = ''
         for char in format:
@@ -119,5 +121,11 @@ class Profile(models.Model):
                 if not self.last_name:
                     continue
                 full_name += self.last_name[0] + '.'
+            else:
+                raise ValueError("Format can only contain characters: fFmMlL")
             full_name += ' '
+
+        if full_name == ' ' or full_name == '':  # if full name is empty return username
+            return f"@{self.user.username}"
+
         return full_name[:-1]  # don't include last space

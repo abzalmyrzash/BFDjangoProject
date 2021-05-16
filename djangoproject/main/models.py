@@ -3,12 +3,14 @@ from django.db import models
 # Create your models here.
 
 from django.db import models
+from django.db.models import Q
 from django.contrib.postgres.fields import ArrayField
 from auth_.models import CustomUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from utils.constants import REACTION_TYPES, REACTION_TYPE_LIKE, REQUEST_STATUS, REQUEST_STATUS_PENDING
 from utils.validators import validate_extension, validate_size
+from main.permissions import GetPostPermission
 
 
 class GroupManager(models.Manager):
@@ -64,13 +66,13 @@ class Group(models.Model):
 
 class ReactionManager(models.Manager):
     def get_related(self):
-        return self.select_related('post', 'user')
+        return self.select_related('post_type', 'user')
 
     def get_by_post(self, post):
-        return self.get_related().filter(post=post)
+        return self.get_related().filter(post_instance=post)
 
-    def get_by_user(self, user):
-        return self.get_related().filter(post=user)
+    def get_by_user(self, user_id):
+        return self.get_related().filter(user_id=user_id)
 
 
 class Reaction(models.Model):
@@ -83,6 +85,7 @@ class Reaction(models.Model):
     objects = ReactionManager()
 
     class Meta:
+        unique_together = ('post_id', 'post_type', 'user')
         verbose_name = "Реакция"
         verbose_name_plural = "Реакции"
 
@@ -91,7 +94,8 @@ class AbstractPublication(models.Model):
     body = models.TextField(max_length=5000, blank=True)
     created_by = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="%(class)ss")
     created_at = models.DateTimeField(auto_now_add=True)
-    reactions = GenericRelation(Reaction, content_type_field='post_type', object_id_field='post_id')
+    reactions = GenericRelation(Reaction, content_type_field='post_type', object_id_field='post_id',
+                                related_query_name='%(class)s_instance')
 
     class Meta:
         abstract = True
@@ -101,11 +105,30 @@ class PostManager(models.Manager):
     def get_related(self):
         return self.prefetch_related('created_by', 'group', 'reactions')
 
-    def get_by_creator(self, creator):
-        return self.get_related().filter(created_by=creator)
+    def get_by_creator(self, creator_id, request_user_id):
+        """
+        if request user is creator's friend or is the creator: return all non-group or group-available* posts
+        else if creator is not private: return non-private and non-group or group-available* posts
+        else: return only group-available* posts
 
-    def get_by_group(self, group):
-        return self.get_related().filter(group=group)
+        * group-available means posted to groups where both request user and creator are members
+        """
+        creator = CustomUser.objects.get(id=creator_id)
+        req_user_groups = Group.objects.filter(members__id=request_user_id).values_list('id', flat=True)
+        creator_groups = Group.objects.filter(members__id=creator_id).values_list('id', flat=True)
+        common_groups = req_user_groups.filter(id__in=creator_groups)
+
+        if creator.friends.filter(id=request_user_id).exists() or request_user_id == creator_id:
+            return self.get_related().filter(Q(created_by=creator_id) &
+                                             (Q(group__isnull=True) | Q(group_id__in=common_groups)))
+        if not creator.is_private:
+            return self.get_related().filter(Q(created_by=creator_id) &
+                                             (Q(is_private=False) & Q(group__isnull=True) |
+                                              Q(group_id__in=common_groups)))
+        return self.get_related().filter(Q(created_by=creator_id) & Q(group_id__in=common_groups))
+
+    def get_by_group(self, group_id):
+        return self.get_related().filter(group=group_id)
 
 
 class Post(AbstractPublication):
@@ -123,22 +146,31 @@ class Post(AbstractPublication):
         verbose_name = "Пост"
         verbose_name_plural = "Посты"
 
+    def get_short_title(self):
+        if len(self.title) < 30:
+            return self.title
+        return self.title[:30] + "..."
+
     def __str__(self):
-        return '%s (created by %s at %s, ID %s)' % (self.title, self.created_by, self.created_at, self.id)
+        return '%s (%s)' % (self.get_short_title(), self.id)
 
 
 class CommentManager(models.Manager):
     def get_related(self):
         return self.prefetch_related('created_by', 'post', 'directed_to', 'reactions')
 
-    def get_by_creator(self, creator):
-        return self.get_related().filter(created_by=creator)
+    def get_by_post(self, post_id):
+        return self.get_related().filter(post=post_id)
 
-    def get_by_group(self, group):
-        return self.get_related().filter(group=group)
+    def get_by_parent_comment(self, comment_id):
+        return self.get_related().filter(directed_to=comment_id)
+
+    def get_by_creator(self, creator_id):
+        return self.get_related().filter(created_by=creator_id)
 
 
 class Comment(AbstractPublication):
+    body = models.TextField(max_length=5000, blank=False)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
     directed_to = models.ForeignKey("Comment", on_delete=models.CASCADE, related_name="replies",
                                     null=True, blank=True)
@@ -149,9 +181,13 @@ class Comment(AbstractPublication):
         verbose_name = "Комментарий"
         verbose_name_plural = "Комментарии"
 
+    def get_short_body(self):
+        if len(self.body) < 30:
+            return self.body
+        return self.body[:30] + "..."
+
     def __str__(self):
-        return '%s (created by %s at %s under post %s)' %\
-               (self.id, self.created_by, self.created_at, self.post.title)
+        return '%s (%s)' % (self.get_short_body(), self.id)
 
 
 class AbstractRequest(models.Model):
@@ -234,3 +270,11 @@ class GroupInvite(AbstractRequest):
         # unique_together = ('group', 'to_user')
         verbose_name = "Приглашение в группу"
         verbose_name_plural = "Приглашения в группу"
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, verbose_name="Пользователь")
+    text = models.TextField(max_length=500, verbose_name="Текст")
+    url = models.CharField(max_length=255, blank=True, verbose_name="URL")
+    sent_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False, verbose_name="Прочитано")

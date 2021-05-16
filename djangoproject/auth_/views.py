@@ -1,6 +1,7 @@
 from django.shortcuts import render
 
 from rest_framework import generics, mixins, viewsets
+from rest_framework.decorators import action
 from rest_framework.decorators import api_view
 from rest_framework_jwt.serializers import JSONWebTokenSerializer, VerifyJSONWebTokenSerializer
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -24,12 +25,13 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'list':
             return UserSerializer
-        elif self.action in ['update', 'partial update']:
+        elif self.action in ['update', 'partial_update']:
             return UserUpdateSerializer
         else:
             return UserFullSerializer
 
     def get_permissions(self):
+        print(self.action)
         if self.action in ['list', 'retrieve', 'create']:
             permission_classes = (AllowAny,)
         else:
@@ -37,8 +39,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
         return [permission() for permission in permission_classes]
 
-    def get(self, request, *args, **kwargs):
-        return self.list(request, *args, **kwargs)
+
 
 
 class ProfileViewSet(viewsets.GenericViewSet,
@@ -61,6 +62,15 @@ class ProfileViewSet(viewsets.GenericViewSet,
     def perform_update(self, serializer):
         serializer.save()
         logger.info(f'Profile updated: {serializer.instance}')
+
+    @action(methods=['GET'], detail=True, url_path='get_by_user', url_name='get_by_user')
+    def get_by_user(self, request, pk):
+        pk = int(pk)
+        if not CustomUser.objects.filter(id=pk).exists():
+            return Response("User not found.", status=status.HTTP_404_NOT_FOUND)
+        profile = Profile.objects.get(user_id=pk)
+        serializer = ProfileSerializer(profile)
+        return Response(serializer.data)
 
 
 @api_view(['POST'])

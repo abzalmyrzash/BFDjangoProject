@@ -37,3 +37,6 @@ GENDERS = (
 )
 
 MINIMUM_AGE = 13
+
+# used to notify the user about reaction count
+REACTION_COUNT_MILESTONES = [1, 5, 25, 100, 1000]
