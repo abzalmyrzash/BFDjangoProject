@@ -6,10 +6,6 @@ from main.permissions import GetPostPermission
 
 
 class GroupSerializer(serializers.ModelSerializer):
-    # id = serializers.IntegerField(read_only=True)
-    # name = serializers.CharField(required=True)
-    # created_by = UserSerializer(read_only=True)
-    # created_at = serializers.DateTimeField(read_only=True)
     class Meta:
         model = Group
         fields = ('id', 'name', 'description', 'photo')

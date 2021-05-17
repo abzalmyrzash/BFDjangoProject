@@ -18,21 +18,6 @@ class GroupManager(models.Manager):
         return self.prefetch_related('owner', 'admins', 'members', 'posts',
                                      'sent_group_invites', 'incoming_group_join_requests')
 
-    # def get_by_owner(self, player_id):
-    #     return self.get_related().filter(id=player_id)
-    #
-    # def get_by_member(self, player_id):
-    #     return self.get_related().filter(id=player_id)
-    #
-    # def get_by_post(self, player_id):
-    #     return self.get_related().filter(id=player_id)
-    #
-    # def get_by_group_invite(self, player_id):
-    #     return self.get_related().filter(id=player_id)
-    #
-    # def get_by_join_request(self, player_id):
-    #     return self.get_related().filter(id=player_id)
-
 
 class Group(models.Model):
     name = models.CharField(max_length=30)
